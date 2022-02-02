@@ -17,6 +17,7 @@ func (svr *Server) Serve(addr string) {
 	defer func() {
 		fmt.Println("server closed")
 	}()
+	PacketEncode()
 	serverSock, _ := net.Listen("tcp", addr)
 
 	for true {
