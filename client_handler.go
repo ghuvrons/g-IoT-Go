@@ -2,29 +2,38 @@ package giotgo
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"net"
 	"time"
+
+	"github.com/ghuvrons/g-IoT-Go/giot_packet"
 )
 
 type ClientHandler struct {
-	connection *net.Conn
-	state      ClientState
-	tmpBuffer  []byte
-	buffer     *bytes.Buffer
-	bufferPtr  int
-	timeout    int
-	tmpPacket  *packet
+	connection   *net.Conn
+	server       *Server
+	state        ClientState
+	tmpBuffer    []byte
+	buffer       *bytes.Buffer
+	bufferPtr    int
+	timeout      int
+	tmpPacket    *giot_packet.Packet
+	queueCommand chan [2]interface{}
+
+	info struct {
+		name string
+	}
 }
 
-func NewClientHandler(conn *net.Conn, timeout int) *ClientHandler {
+func NewClientHandler(conn *net.Conn, server *Server, timeout int) *ClientHandler {
 	client := &ClientHandler{}
 	client.connection = conn
 	client.tmpBuffer = make([]byte, 128)
 	client.buffer = &bytes.Buffer{}
 	client.timeout = timeout
-	client.tmpPacket = NewPacket()
+	client.tmpPacket = giot_packet.NewPacket()
+	client.server = server
+	client.queueCommand = make(chan [2]interface{}, 5)
 
 	go func() {
 		client.state = CLIENT_STATE_CONNECTING
@@ -34,7 +43,9 @@ func NewClientHandler(conn *net.Conn, timeout int) *ClientHandler {
 }
 
 func (client *ClientHandler) handle() {
-	for true {
+	go client.handleCommand()
+
+	for client.state != CLIENT_STATE_CLOSE {
 		if client.timeout != 0 {
 			(*client.connection).SetReadDeadline(time.Now().Add(time.Duration(client.timeout) * time.Second))
 		}
@@ -42,7 +53,6 @@ func (client *ClientHandler) handle() {
 		len, err := (*client.connection).Read(client.tmpBuffer)
 
 		if err != nil {
-			fmt.Println((err))
 			if err == io.EOF {
 				break
 			}
@@ -54,23 +64,91 @@ func (client *ClientHandler) handle() {
 		}
 
 		for client.buffer.Len() > 0 {
-			if client.tmpPacket.packetType == 0 {
-				_, err := client.tmpPacket.packetDecode(client.buffer)
-				if err != nil {
+			if client.tmpPacket.PacketType == 0 {
+				if err := client.tmpPacket.Decode(client.buffer); err != nil {
 					break
 				}
 			} else {
-				willWriteLen := int(client.tmpPacket.length)
+				willWriteLen := int(client.tmpPacket.Length)
 				if willWriteLen > client.buffer.Len() {
 					willWriteLen = client.buffer.Len()
 				}
-				client.tmpPacket.payload.Write(client.buffer.Bytes()[:willWriteLen])
+				client.tmpPacket.Payload.Write(client.buffer.Bytes()[:willWriteLen])
 				client.buffer.Next(willWriteLen)
+			}
+
+			if client.tmpPacket.IsValid() {
+				client.handlePacket(client.tmpPacket)
+				client.tmpPacket.Reset()
 			}
 		}
 	}
 }
 
-func (client *ClientHandler) handlePacket() {
+func (client *ClientHandler) handlePacket(pck *giot_packet.Packet) {
+	switch pck.PacketType {
+	case giot_packet.PACKET_TYPE_CONNECT:
+		pckConn := giot_packet.PacketConnectDecode(pck)
 
+		// validating
+		if err := pckConn.Validate(client.server.authenticator); err != nil {
+			client.close()
+		}
+
+		// on success
+		client.state = CLIENT_STATE_CONNECT
+
+		bufConnack := &bytes.Buffer{}
+		pckConnAck := giot_packet.NewPacketConnack(giot_packet.RESP_OK)
+		pckConnAck.Encode(bufConnack)
+
+		(*client.connection).Write(bufConnack.Bytes())
+
+	case giot_packet.PACKET_TYPE_COMMAND:
+		pckCmd := giot_packet.PacketCommandDecode(pck)
+
+		var respStatus giot_packet.RespStatus = giot_packet.RESP_OK
+		var respBuffer *bytes.Buffer
+
+		handler, isOK := client.server.commandHandlers[pckCmd.Command]
+		if !isOK && handler == nil {
+			return
+		} else {
+			respBuffer = handler(client, pckCmd.Payload)
+		}
+
+		bufConnack := &bytes.Buffer{}
+		packResp := giot_packet.NewPacketResponse(respStatus)
+		packResp.AckId = pckCmd.AckId
+		packResp.Payload = respBuffer
+		packResp.Encode(bufConnack)
+
+		(*client.connection).Write(bufConnack.Bytes())
+	}
+}
+
+func (client *ClientHandler) handleCommand() {
+	for client.state != CLIENT_STATE_CLOSE {
+		select {
+		case ch := <-client.queueCommand:
+			exec, isOK := client.server.commandExecutors[ch[0].(giot_packet.Command)]
+			if !isOK && exec == nil {
+				continue
+			} else {
+				exec(client, ch[1])
+			}
+
+		case <-time.After(60 * time.Second):
+			continue
+		}
+
+	}
+}
+
+func (client *ClientHandler) Execute(cmd giot_packet.Command, data giot_packet.Data) {
+	client.queueCommand <- [2]interface{}{cmd, data}
+}
+
+func (client *ClientHandler) close() {
+	client.state = CLIENT_STATE_CLOSE
 }
