@@ -53,11 +53,31 @@ func setCmdHandlers(server *giotgo.Server) {
 				return giot_packet.RESP_UNKNOWN_ERROR, nil
 			}
 
-			f.Seek(int64(offset), 0)
+			if offset == 414720 {
+			} else {
+				offset = 0
+			}
+
+			if ret, err := f.Seek(int64(offset), 0); err != nil {
+				fmt.Println(err)
+				fmt.Println(offset, "=>", ret)
+			} else {
+				fmt.Printf("\r\t\t\t")
+				fmt.Print("\r", offset)
+			}
+			if offset == 414720 {
+				fmt.Print("hayooo", offset)
+			}
+
 			if readLen > uint32(cap(readFileBuffer)) {
 				readLen = uint32(cap(readFileBuffer))
 			}
 			n2, err := f.Read(readFileBuffer)
+
+			if err != nil {
+				fmt.Println(err)
+				return giot_packet.RESP_UNKNOWN_ERROR, nil
+			}
 
 			buf := bytes.NewBuffer(readFileBuffer[:n2])
 
