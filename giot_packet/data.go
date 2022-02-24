@@ -80,9 +80,6 @@ func EncodeData(data Data, dt dataType, buf *bytes.Buffer) error {
 		switch data.(type) {
 		case *bytes.Reader:
 			rdr := data.(*bytes.Reader)
-			if err := EncodeData(rdr.Len(), DT_DINT, buf); err != nil {
-				return err
-			}
 			if _, err := rdr.WriteTo(buf); err != nil {
 				return err
 			}

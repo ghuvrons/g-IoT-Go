@@ -29,7 +29,7 @@ func (packResp *PacketResponse) Encode(buffer *bytes.Buffer) error {
 	}
 
 	if packResp.Payload != nil {
-		if err := EncodeData(packResp.Payload, DT_BUFFER, pack.Payload); err != nil {
+		if err := EncodeData(bytes.NewReader(packResp.Payload.Bytes()), DT_BUFFER, pack.Payload); err != nil {
 			return err
 		}
 	}

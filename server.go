@@ -16,13 +16,13 @@ type Server struct {
 
 	authenticator    func(username, password string) bool
 	commandHandlers  map[giot_packet.Command]CommandHandler
-	commandExecutors map[giot_packet.Command]CommandHandler
+	commandExecutors map[giot_packet.Command]CommandExecutor
 }
 
 func NewServer() *Server {
 	server := &Server{}
 	server.commandHandlers = map[giot_packet.Command]CommandHandler{}
-	server.commandExecutors = map[giot_packet.Command]CommandHandler{}
+	server.commandExecutors = map[giot_packet.Command]CommandExecutor{}
 	return server
 }
 
@@ -48,7 +48,7 @@ func (svr *Server) On(cmd giot_packet.Command, handler CommandHandler) {
 	svr.commandHandlers[cmd] = handler
 }
 
-func (svr *Server) OnExecute(cmd giot_packet.Command, handler CommandHandler) {
+func (svr *Server) OnExecute(cmd giot_packet.Command, handler CommandExecutor) {
 	svr.commandExecutors[cmd] = handler
 }
 

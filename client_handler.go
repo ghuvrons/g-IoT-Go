@@ -56,7 +56,7 @@ func (client *ClientHandler) handle() {
 			if err == io.EOF {
 				break
 			}
-			continue
+			break
 		}
 
 		if len > 0 {
@@ -83,6 +83,7 @@ func (client *ClientHandler) handle() {
 			}
 		}
 	}
+	client.close()
 }
 
 func (client *ClientHandler) handlePacket(pck *giot_packet.Packet) {
@@ -114,16 +115,16 @@ func (client *ClientHandler) handlePacket(pck *giot_packet.Packet) {
 		if !isOK && handler == nil {
 			return
 		} else {
-			respBuffer = handler(client, pckCmd.Payload)
+			respStatus, respBuffer = handler(client, pckCmd.Payload)
 		}
 
-		bufConnack := &bytes.Buffer{}
+		bufResp := &bytes.Buffer{}
 		packResp := giot_packet.NewPacketResponse(respStatus)
 		packResp.AckId = pckCmd.AckId
 		packResp.Payload = respBuffer
-		packResp.Encode(bufConnack)
+		packResp.Encode(bufResp)
 
-		(*client.connection).Write(bufConnack.Bytes())
+		(*client.connection).Write(bufResp.Bytes())
 	}
 }
 

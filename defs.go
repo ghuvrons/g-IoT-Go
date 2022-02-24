@@ -15,4 +15,5 @@ const (
 	CLIENT_STATE_READIKNG_PAYLOAD
 )
 
-type CommandHandler func(client *ClientHandler, data giot_packet.Data) *bytes.Buffer
+type CommandHandler func(client *ClientHandler, data giot_packet.Data) (giot_packet.RespStatus, *bytes.Buffer)
+type CommandExecutor func(client *ClientHandler, data giot_packet.Data)
