@@ -11,7 +11,7 @@ type PacketCommand struct {
 }
 
 func (packResp *PacketCommand) Encode(buffer *bytes.Buffer) error {
-	pack := NewPacket()
+	pack := NewPacket(buffer.Bytes()[16:])
 	pack.PacketType = PACKET_TYPE_RESPONSE
 
 	if err := EncodeData(&(packResp.Command), DT_BUFFER, pack.Payload); err != nil {

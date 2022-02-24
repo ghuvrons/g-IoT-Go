@@ -41,7 +41,7 @@ func (packConn *PacketConnect) Validate(handler func(username string, password s
 	}
 
 	if handler != nil && !handler(username, password) {
-		return &errAuthInvalid{}
+		return errInvalidAuth
 	}
 
 	return nil

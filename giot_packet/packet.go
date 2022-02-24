@@ -16,9 +16,10 @@ type Packet struct {
 	Payload    *bytes.Buffer
 }
 
-func NewPacket() *Packet {
+func NewPacket(payload []byte) *Packet {
 	pack := &Packet{}
-	pack.Payload = &bytes.Buffer{}
+	pack.Payload = bytes.NewBuffer(payload)
+	pack.Payload.Reset()
 	return pack
 }
 
@@ -42,15 +43,21 @@ func (pack *Packet) IsValid() bool {
 
 func (pack *Packet) Encode(buffer *bytes.Buffer) error {
 	if !pack.IsValid() {
-		return &errPacketInvalid{}
+		return errInvalidPacket
 	}
+
+	buffer.Reset()
 
 	header := PacketHeader{
 		PACKET_FLAG,
 		pack.PacketType,
 	}
 
-	buffer.Reset()
+	bufSpaceLen := buffer.Cap() - buffer.Len()
+	if bufSpaceLen < binary.Size(header) {
+		return errBufferNoSpace
+	}
+
 	if err := binary.Write(buffer, binary.BigEndian, header); err != nil {
 		return err
 	}
@@ -59,6 +66,10 @@ func (pack *Packet) Encode(buffer *bytes.Buffer) error {
 		return err
 	}
 
+	bufSpaceLen = buffer.Cap() - buffer.Len()
+	if bufSpaceLen < pack.Payload.Len() {
+		return errBufferNoSpace
+	}
 	if _, err := pack.Payload.WriteTo(buffer); err != nil {
 		return err
 	}
@@ -76,7 +87,7 @@ func (pack *Packet) Decode(buffer *bytes.Buffer) error {
 		return err
 	}
 	if header.Flag != PACKET_FLAG {
-		return &errPacketInvalid{}
+		return errInvalidPacket
 	}
 
 	tmpReadLen = binary.Size(&header)

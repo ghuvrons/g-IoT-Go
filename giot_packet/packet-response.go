@@ -17,7 +17,7 @@ func NewPacketResponse(respStatus RespStatus) *PacketResponse {
 }
 
 func (packResp *PacketResponse) Encode(buffer *bytes.Buffer) error {
-	pack := NewPacket()
+	pack := NewPacket(buffer.Bytes()[16:])
 	pack.PacketType = PACKET_TYPE_RESPONSE
 
 	if err := EncodeData(&(packResp.Status), DT_BYTE, pack.Payload); err != nil {

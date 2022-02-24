@@ -17,13 +17,15 @@ func NewPacketConnack(respStatus RespStatus) *PacketConnack {
 }
 
 func (packConnack *PacketConnack) Encode(buffer *bytes.Buffer) error {
-	pack := NewPacket()
+	pack := NewPacket(buffer.Bytes()[16:])
 	pack.PacketType = PACKET_TYPE_CONNACK
 
 	if err := EncodeData(&(packConnack.Status), DT_BYTE, pack.Payload); err != nil {
 		return err
 	}
-	Properties(packConnack.properties[:]).Encode(pack.Payload)
+	if err := Properties(packConnack.properties[:]).Encode(pack.Payload); err != nil {
+		return err
+	}
 	pack.Length = uint16(pack.Payload.Len())
 	pack.Encode(buffer)
 	return nil

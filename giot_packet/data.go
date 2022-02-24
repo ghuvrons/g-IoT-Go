@@ -11,6 +11,11 @@ type Data interface{}
 
 func EncodeData(data Data, dt dataType, buf *bytes.Buffer) error {
 	var rv reflect.Value
+	bufSpaceLen := buf.Cap() - buf.Len()
+
+	if bufSpaceLen == 0 {
+		return errBufferNoSpace
+	}
 
 	rv = reflect.ValueOf(data)
 
@@ -19,19 +24,19 @@ func EncodeData(data Data, dt dataType, buf *bytes.Buffer) error {
 	}
 
 	if !rv.IsValid() {
-		return &errDataInvalid{}
+		return errInvalidData
 	}
 
 	switch dt {
 	case DT_BYTE:
-		b := []byte{}
+		var b []byte
 		switch rk := rv.Kind(); rk {
 		case reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uint:
 			b = []byte{byte(rv.Uint())}
 		case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Int:
 			b = []byte{byte(rv.Int())}
 		default:
-			return &errDataInvalid{}
+			return errInvalidData
 		}
 		buf.Write(b)
 
@@ -43,9 +48,9 @@ func EncodeData(data Data, dt dataType, buf *bytes.Buffer) error {
 		case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Int:
 			x64 = uint64(rv.Int())
 		default:
-			return &errDataInvalid{}
+			return errInvalidData
 		}
-		b := []byte{}
+		var b []byte
 
 		if x64 < 0xFE {
 			b = []byte{byte(x64)}
@@ -60,6 +65,10 @@ func EncodeData(data Data, dt dataType, buf *bytes.Buffer) error {
 			buf.Write([]byte{byte(0xFF)})
 			b = b[4:]
 		}
+		bufSpaceLen = buf.Cap() - buf.Len()
+		if bufSpaceLen < len(b) {
+			return errBufferNoSpace
+		}
 		if _, err := buf.Write(b); err != nil {
 			return err
 		}
@@ -67,10 +76,14 @@ func EncodeData(data Data, dt dataType, buf *bytes.Buffer) error {
 	case DT_BINARY, DT_UTF8:
 		rdr, isOK := data.(*bytes.Reader)
 		if !isOK {
-			return &errDataInvalid{}
+			return errInvalidData
 		}
 		if err := EncodeData(rdr.Len(), DT_DINT, buf); err != nil {
 			return err
+		}
+		bufSpaceLen = buf.Cap() - buf.Len()
+		if bufSpaceLen < rdr.Len() {
+			return errBufferNoSpace
 		}
 		if _, err := rdr.WriteTo(buf); err != nil {
 			return err
@@ -80,17 +93,33 @@ func EncodeData(data Data, dt dataType, buf *bytes.Buffer) error {
 		switch data.(type) {
 		case *bytes.Reader:
 			rdr := data.(*bytes.Reader)
+			if bufSpaceLen < rdr.Len() {
+				return errBufferNoSpace
+			}
 			if _, err := rdr.WriteTo(buf); err != nil {
 				return err
 			}
 
 		case []byte:
-			if _, err := buf.Write(data.([]byte)); err != nil {
+			dataBytes := data.([]byte)
+			if bufSpaceLen < len(dataBytes) {
+				return errBufferNoSpace
+			}
+			if _, err := buf.Write(dataBytes); err != nil {
 				return err
 			}
 
 		default:
-			if err := binary.Write(buf, binary.BigEndian, data); err != nil {
+			dataBytes := make([]byte, 8)
+			tmpBuffer := bytes.NewBuffer(dataBytes)
+			tmpBuffer.Reset()
+			if err := binary.Write(tmpBuffer, binary.BigEndian, data); err != nil {
+				return err
+			}
+			if bufSpaceLen < tmpBuffer.Len() {
+				return errBufferNoSpace
+			}
+			if _, err := tmpBuffer.WriteTo(buf); err != nil {
 				return err
 			}
 		}
@@ -112,13 +141,13 @@ func DecodeData(data Data, dt dataType, rdr *bytes.Reader) (readLen int, err err
 	}
 
 	if !rv.IsValid() || !rv.CanSet() {
-		return readLen, &errDataInvalid{}
+		return readLen, errInvalidData
 	}
 
 	switch dt {
 	case DT_BYTE:
 		if rv.Kind() != reflect.Uint8 {
-			return readLen, &errDataInvalid{}
+			return readLen, errInvalidData
 		}
 
 		x8, err = rdr.ReadByte()
@@ -175,12 +204,12 @@ func DecodeData(data Data, dt dataType, rdr *bytes.Reader) (readLen int, err err
 		}
 
 		if rdr.Len() < dataLength {
-			return readLen, &errDataInvalid{}
+			return readLen, errInvalidData
 		}
 
 		dw, isOK := data.(io.Writer)
 		if !isOK {
-			return readLen, &errDataInvalid{}
+			return readLen, errInvalidData
 		}
 
 		tmpBuf := make([]byte, dataLength)
@@ -197,7 +226,7 @@ func DecodeData(data Data, dt dataType, rdr *bytes.Reader) (readLen int, err err
 		case io.Writer:
 			dw, isOK := data.(io.Writer)
 			if !isOK {
-				return readLen, &errDataInvalid{}
+				return readLen, errInvalidData
 			}
 			var n64 int64
 			n64, err = rdr.WriteTo(dw)
@@ -210,7 +239,7 @@ func DecodeData(data Data, dt dataType, rdr *bytes.Reader) (readLen int, err err
 		default:
 			dataSize := binary.Size(data)
 			if dataSize > rdr.Len() {
-				return readLen, &errDataInvalid{}
+				return readLen, errInvalidData
 			}
 			err = binary.Read(rdr, binary.BigEndian, data)
 			readLen += dataSize

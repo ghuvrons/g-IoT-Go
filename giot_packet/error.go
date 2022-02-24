@@ -1,19 +1,30 @@
 package giot_packet
 
-type errDataInvalid struct{}
-
-func (err *errDataInvalid) Error() string {
-	return "Data Invalid"
+type giotError struct {
+	code byte
 }
 
-type errPacketInvalid struct{}
-
-func (err *errPacketInvalid) Error() string {
-	return "Packet Invalid"
+func (err *giotError) Error() string {
+	if byte(len(giotErrorStr)) > err.code {
+		return giotErrorStr[err.code]
+	}
+	return "Unknown Error"
 }
 
-type errAuthInvalid struct{}
+const (
+	giot_ERR_INVALID_DATA byte = iota
+	giot_ERR_INVALID_PACKET
+	giot_ERR_INVALID_AUTH
+	giot_ERR_BUFFER_NO_SPACE
+)
 
-func (err *errAuthInvalid) Error() string {
-	return "username or password error"
+var giotErrorStr = []string{
+	"Invalid Data",
+	"Invalid Packet",
+	"Username or Password is wrong",
+	"No Buffer's Space",
 }
+var errInvalidData = &giotError{code: giot_ERR_INVALID_DATA}
+var errInvalidPacket = &giotError{code: giot_ERR_INVALID_PACKET}
+var errInvalidAuth = &giotError{code: giot_ERR_INVALID_AUTH}
+var errBufferNoSpace = &giotError{code: giot_ERR_BUFFER_NO_SPACE}

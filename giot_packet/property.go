@@ -29,8 +29,16 @@ func (properties Properties) Encode(buf *bytes.Buffer) error {
 		switch data.(type) {
 		case []byte:
 			data = bytes.NewReader(data.([]byte))
+			tmpBuffer.Grow(len(data.([]byte)) + 4)
+		case string:
+			tmpBuffer.Grow(len(data.(string)) + 4)
+		case *bytes.Reader:
+			tmpBuffer.Grow(data.(*bytes.Reader).Len() + 4)
+		case *bytes.Buffer:
+			tmpBuffer.Grow(data.(*bytes.Buffer).Len() + 4)
+		default:
+			tmpBuffer.Grow(8)
 		}
-
 		if err := EncodeData(data, (&properties[i]).getDataType(), tmpBuffer); err != nil {
 			return err
 		}
@@ -40,6 +48,10 @@ func (properties Properties) Encode(buf *bytes.Buffer) error {
 		return err
 	}
 
+	bufSpaceLen := buf.Cap() - buf.Len()
+	if bufSpaceLen < tmpBuffer.Len() {
+		return errBufferNoSpace
+	}
 	if _, err := tmpBuffer.WriteTo(buf); err != nil {
 		return err
 	}
@@ -64,7 +76,7 @@ func (properties Properties) Decode(buffer *bytes.Reader) (readLen int, err erro
 			break
 		}
 		if buffer.Len() <= 0 {
-			return readLen, &errDataInvalid{}
+			return readLen, errInvalidData
 		}
 		// read id
 		properties[i].id, err = buffer.ReadByte()

@@ -2,6 +2,7 @@ package giotgo
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"net"
 	"time"
@@ -20,6 +21,10 @@ type ClientHandler struct {
 	tmpPacket    *giot_packet.Packet
 	queueCommand chan [2]interface{}
 
+	buffers struct {
+		tx []byte
+		rx []byte
+	}
 	info struct {
 		name string
 	}
@@ -31,9 +36,11 @@ func NewClientHandler(conn *net.Conn, server *Server, timeout int) *ClientHandle
 	client.tmpBuffer = make([]byte, 128)
 	client.buffer = &bytes.Buffer{}
 	client.timeout = timeout
-	client.tmpPacket = giot_packet.NewPacket()
 	client.server = server
 	client.queueCommand = make(chan [2]interface{}, 5)
+	client.buffers.tx = make([]byte, 1056)
+	client.buffers.rx = make([]byte, 1024)
+	client.tmpPacket = giot_packet.NewPacket(client.buffers.tx)
 
 	go func() {
 		client.state = CLIENT_STATE_CONNECTING
@@ -99,7 +106,7 @@ func (client *ClientHandler) handlePacket(pck *giot_packet.Packet) {
 		// on success
 		client.state = CLIENT_STATE_CONNECT
 
-		bufConnack := &bytes.Buffer{}
+		bufConnack := bytes.NewBuffer(client.buffers.tx)
 		pckConnAck := giot_packet.NewPacketConnack(giot_packet.RESP_OK)
 		pckConnAck.Encode(bufConnack)
 
@@ -118,13 +125,14 @@ func (client *ClientHandler) handlePacket(pck *giot_packet.Packet) {
 			respStatus, respBuffer = handler(client, pckCmd.Payload)
 		}
 
-		bufResp := &bytes.Buffer{}
+		bufResp := bytes.NewBuffer(client.buffers.tx)
 		packResp := giot_packet.NewPacketResponse(respStatus)
 		packResp.AckId = pckCmd.AckId
 		packResp.Payload = respBuffer
 		packResp.Encode(bufResp)
-
-		(*client.connection).Write(bufResp.Bytes())
+		(*client.connection).SetReadDeadline(time.Now().Add(time.Duration(3) * time.Second))
+		n, err := (*client.connection).Write(bufResp.Bytes())
+		fmt.Print("|", n, err)
 	}
 }
 
