@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"hash/crc32"
+	"io"
 	"os"
 
 	giotgo "github.com/ghuvrons/g-IoT-Go"
@@ -32,6 +33,7 @@ func setCmdHandlers(server *giotgo.Server) {
 	)
 
 	readFileBuffer := make([]byte, 1024)
+	var crc uint32 = 0
 	server.On(CMD_DOWNLOAD,
 		func(client *giotgo.ClientHandler, data giot_packet.Data) (giot_packet.RespStatus, *bytes.Buffer) {
 			b, isOK := data.(*bytes.Buffer)
@@ -53,26 +55,23 @@ func setCmdHandlers(server *giotgo.Server) {
 				return giot_packet.RESP_UNKNOWN_ERROR, nil
 			}
 
-			if offset == 414720 {
-			} else {
-				offset = 0
-			}
-
 			if ret, err := f.Seek(int64(offset), 0); err != nil {
 				fmt.Println(err)
 				fmt.Println(offset, "=>", ret)
 			} else {
-				fmt.Printf("\r\t\t\t")
-				fmt.Print("\r", offset)
-			}
-			if offset == 414720 {
-				fmt.Print("hayooo", offset)
 			}
 
 			if readLen > uint32(cap(readFileBuffer)) {
 				readLen = uint32(cap(readFileBuffer))
 			}
 			n2, err := f.Read(readFileBuffer)
+
+			// debugging
+			crc = crc32.Update(crc, crc32.IEEETable, readFileBuffer[:n2])
+			fmt.Printf("%d|0x%.2X\r\n", offset, crc)
+			if offset == 413696 {
+				// fmt.Print("hayooo", offset)
+			}
 
 			if err != nil {
 				fmt.Println(err)
@@ -106,18 +105,20 @@ func calcInfoFile(path string) (uint32, uint32) {
 	for true {
 		n2, err := f.Read(b2)
 		if err != nil {
+			if err == io.EOF {
+				break
+			}
 			return 0, 0
 		}
 
 		length += uint32(n2)
-
 		if n2 == 0 {
 			break
-		} else if n2 < 256 {
-			crc = crc32.Update(crc, crc32.IEEETable, []byte("d"))
+		}
+		crc = crc32.Update(crc, crc32.IEEETable, b2[:n2])
+		if n2 < 256 {
 			break
 		}
-		crc = crc32.Update(crc, crc32.IEEETable, []byte("d"))
 	}
 	return length, crc
 }

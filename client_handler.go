@@ -2,7 +2,6 @@ package giotgo
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"net"
 	"time"
@@ -110,7 +109,9 @@ func (client *ClientHandler) handlePacket(pck *giot_packet.Packet) {
 		pckConnAck := giot_packet.NewPacketConnack(giot_packet.RESP_OK)
 		pckConnAck.Encode(bufConnack)
 
-		(*client.connection).Write(bufConnack.Bytes())
+		if _, err := (*client.connection).Write(bufConnack.Bytes()); err != nil {
+			client.close()
+		}
 
 	case giot_packet.PACKET_TYPE_COMMAND:
 		pckCmd := giot_packet.PacketCommandDecode(pck)
@@ -130,9 +131,10 @@ func (client *ClientHandler) handlePacket(pck *giot_packet.Packet) {
 		packResp.AckId = pckCmd.AckId
 		packResp.Payload = respBuffer
 		packResp.Encode(bufResp)
-		(*client.connection).SetReadDeadline(time.Now().Add(time.Duration(3) * time.Second))
-		n, err := (*client.connection).Write(bufResp.Bytes())
-		fmt.Print("|", n, err)
+
+		if _, err := (*client.connection).Write(bufResp.Bytes()); err != nil {
+			client.close()
+		}
 	}
 }
 

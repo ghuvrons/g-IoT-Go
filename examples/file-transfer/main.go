@@ -7,6 +7,12 @@ import (
 )
 
 func main() {
+	// var crc uint32 = 0
+	// crc = crc32.Update(crc, crc32.IEEETable, []byte("ghuvrons"))
+
+	// fmt.Printf("0x%.8X\r\n", crc)
+
+	// return
 	fmt.Println("Start")
 
 	var server = giotgo.NewServer()
