@@ -21,8 +21,8 @@ type ClientHandler struct {
 	queueCommand chan [2]interface{}
 
 	buffers struct {
-		tx []byte
-		rx []byte
+		tx *buffer
+		rx *buffer
 	}
 	info struct {
 		name string
@@ -37,9 +37,10 @@ func NewClientHandler(conn *net.Conn, server *Server, timeout int) *ClientHandle
 	client.timeout = timeout
 	client.server = server
 	client.queueCommand = make(chan [2]interface{}, 5)
-	client.buffers.tx = make([]byte, 1056)
-	client.buffers.rx = make([]byte, 1024)
-	client.tmpPacket = giot_packet.NewPacket(client.buffers.tx)
+	client.buffers.tx = newBuffer(1056)
+	client.buffers.rx = newBuffer(1056)
+
+	client.tmpPacket = giot_packet.NewPacket(client.buffers.tx.bytes)
 
 	go func() {
 		client.state = CLIENT_STATE_CONNECTING
@@ -105,13 +106,15 @@ func (client *ClientHandler) handlePacket(pck *giot_packet.Packet) {
 		// on success
 		client.state = CLIENT_STATE_CONNECT
 
-		bufConnack := bytes.NewBuffer(client.buffers.tx)
+		client.buffers.tx.Lock()
+		bufConnack := bytes.NewBuffer(client.buffers.tx.bytes)
 		pckConnAck := giot_packet.NewPacketConnack(giot_packet.RESP_OK)
 		pckConnAck.Encode(bufConnack)
 
 		if _, err := (*client.connection).Write(bufConnack.Bytes()); err != nil {
 			client.close()
 		}
+		client.buffers.tx.Unlock()
 
 	case giot_packet.PACKET_TYPE_COMMAND:
 		pckCmd := giot_packet.PacketCommandDecode(pck)
@@ -126,7 +129,8 @@ func (client *ClientHandler) handlePacket(pck *giot_packet.Packet) {
 			respStatus, respBuffer = handler(client, pckCmd.Payload)
 		}
 
-		bufResp := bytes.NewBuffer(client.buffers.tx)
+		client.buffers.tx.Lock()
+		bufResp := bytes.NewBuffer(client.buffers.tx.bytes)
 		packResp := giot_packet.NewPacketResponse(respStatus)
 		packResp.AckId = pckCmd.AckId
 		packResp.Payload = respBuffer
@@ -135,6 +139,7 @@ func (client *ClientHandler) handlePacket(pck *giot_packet.Packet) {
 		if _, err := (*client.connection).Write(bufResp.Bytes()); err != nil {
 			client.close()
 		}
+		client.buffers.tx.Unlock()
 	}
 }
 
@@ -152,8 +157,26 @@ func (client *ClientHandler) handleCommand() {
 		case <-time.After(60 * time.Second):
 			continue
 		}
-
 	}
+}
+
+func (client *ClientHandler) Command(cmd giot_packet.Command, data []byte) {
+	client.buffers.tx.Lock()
+
+	bufResp := bytes.NewBuffer(client.buffers.tx.bytes)
+	packCmd := &giot_packet.PacketCommand{}
+	packCmd.AckId = 0
+	packCmd.Command = cmd
+	packCmd.Payload = bytes.NewBuffer(data)
+	packCmd.Encode(bufResp)
+
+	if _, err := (*client.connection).Write(bufResp.Bytes()); err != nil {
+		client.close()
+		return
+	}
+
+	client.buffers.tx.Unlock()
+
 }
 
 func (client *ClientHandler) Execute(cmd giot_packet.Command, data giot_packet.Data) {
@@ -162,4 +185,24 @@ func (client *ClientHandler) Execute(cmd giot_packet.Command, data giot_packet.D
 
 func (client *ClientHandler) close() {
 	client.state = CLIENT_STATE_CLOSE
+}
+
+func bufferLock(lock chan bool) {
+	lock <- true
+}
+
+func bufferUnLock(lock chan bool) {
+	lock <- true
+}
+
+func waitBufferAvailable(lock chan bool) (isOK bool) {
+	isOK = false
+	select {
+	case <-lock:
+		isOK = true
+		return
+
+	case <-time.After(60 * time.Second):
+		return
+	}
 }

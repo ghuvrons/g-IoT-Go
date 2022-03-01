@@ -31,8 +31,11 @@ func (svr *Server) Serve(addr string) {
 		fmt.Println("server closed")
 	}()
 
-	serverSock, _ := net.Listen("tcp", addr)
-
+	serverSock, err := net.Listen("tcp", addr)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
 	for true {
 		conn, err := serverSock.Accept()
 		if err != nil {
