@@ -2,6 +2,7 @@ package giotgo
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"net"
 	"time"
@@ -11,6 +12,8 @@ import (
 
 type ClientHandler struct {
 	connection   *net.Conn
+	ctx          context.Context
+	ctxCancel    context.CancelFunc
 	server       *Server
 	state        ClientState
 	tmpBuffer    []byte
@@ -176,15 +179,28 @@ func (client *ClientHandler) Command(cmd giot_packet.Command, data []byte) {
 	}
 
 	client.buffers.tx.Unlock()
-
 }
 
 func (client *ClientHandler) Execute(cmd giot_packet.Command, data giot_packet.Data) {
 	client.queueCommand <- [2]interface{}{cmd, data}
 }
 
+func (client *ClientHandler) Context() (ctx context.Context) {
+	if client.ctx != nil {
+		return client.ctx
+	}
+	ctx, client.ctxCancel = context.WithCancel(context.Background())
+	return
+}
+
 func (client *ClientHandler) close() {
+	if client.state == CLIENT_STATE_CLOSE {
+		return
+	}
 	client.state = CLIENT_STATE_CLOSE
+	if client.ctxCancel != nil {
+		client.ctxCancel()
+	}
 }
 
 func bufferLock(lock chan bool) {
