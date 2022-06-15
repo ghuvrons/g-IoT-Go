@@ -185,12 +185,12 @@ func (client *ClientHandler) Execute(cmd giot_packet.Command, data giot_packet.D
 	client.queueCommand <- [2]interface{}{cmd, data}
 }
 
-func (client *ClientHandler) Context() (ctx context.Context) {
+func (client *ClientHandler) Context() context.Context {
 	if client.ctx != nil {
 		return client.ctx
 	}
-	ctx, client.ctxCancel = context.WithCancel(context.Background())
-	return
+	client.ctx, client.ctxCancel = context.WithCancel(context.Background())
+	return client.ctx
 }
 
 func (client *ClientHandler) close() {
