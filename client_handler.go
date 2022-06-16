@@ -104,6 +104,7 @@ func (client *ClientHandler) handlePacket(pck *giot_packet.Packet) {
 		// validating
 		if err := pckConn.Validate(client.server.authenticator); err != nil {
 			client.close()
+			return
 		}
 
 		// on success
@@ -126,10 +127,10 @@ func (client *ClientHandler) handlePacket(pck *giot_packet.Packet) {
 		var respBuffer *bytes.Buffer
 
 		handler, isOK := client.server.commandHandlers[pckCmd.Command]
-		if !isOK && handler == nil {
-			return
-		} else {
+		if isOK && handler != nil {
 			respStatus, respBuffer = handler(client, pckCmd.Payload)
+		} else {
+			return
 		}
 
 		client.buffers.tx.Lock()
