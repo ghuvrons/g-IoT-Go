@@ -6,8 +6,9 @@ import (
 )
 
 type PacketHeader struct {
-	Flag       uint8
+	FlagStart  uint8
 	PacketType PacketType
+	FlagClose  [2]uint8
 }
 
 type Packet struct {
@@ -49,8 +50,9 @@ func (pack *Packet) Encode(buffer *bytes.Buffer) error {
 	buffer.Reset()
 
 	header := PacketHeader{
-		PACKET_FLAG,
+		PACKET_FLAG_START,
 		pack.PacketType,
+		PACKET_FLAG_CLOSE,
 	}
 
 	bufSpaceLen := buffer.Cap() - buffer.Len()
@@ -86,7 +88,10 @@ func (pack *Packet) Decode(buffer *bytes.Buffer) error {
 	if err := binary.Read(bytes.NewReader(buffer.Bytes()), binary.BigEndian, &header); err != nil {
 		return err
 	}
-	if header.Flag != PACKET_FLAG {
+	if header.FlagStart != PACKET_FLAG_START {
+		return errInvalidPacket
+	}
+	if header.FlagClose != PACKET_FLAG_CLOSE {
 		return errInvalidPacket
 	}
 

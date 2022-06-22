@@ -2,8 +2,10 @@ package giot_packet
 
 type ptrAddr uint64
 
-const PACKET_FLAG = 0xC7
 const PROTOCOL_VERSION = 1
+const PACKET_FLAG_START = 0xC7
+
+var PACKET_FLAG_CLOSE = [2]uint8{0x7C, 0xEA}
 
 const MAX_PROP_CONNECT = 3
 const MAX_PROP_CONNACK = 1
